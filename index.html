@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Workload Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- 1. Load React & ReactDOM (Specific Versions) -->
+  <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  
+  <!-- 2. Load Prop-Types -->
+  <script src="https://unpkg.com/prop-types/prop-types.min.js"></script>
+  
+  <!-- 3. Load Recharts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.0/Recharts.min.js"></script>
+  
+  <!-- 4. Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f1f1; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-radius: 50%;
+      border-top: 4px solid #3b82f6;
+      width: 40px;
+      height: 40px;
+      -webkit-animation: spin 1s linear infinite; /* Safari */
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans antialiased overflow-hidden">
+  
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+    
+    // --- Safe Recharts Extraction ---
+    const RechartsObj = window.Recharts || (window.Recharts && window.Recharts.default) || {};
+    
+    const ChartFallback = () => (
+       <div className="flex flex-col items-center justify-center h-full w-full bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-sm">
+         <p>Chart Library Issue</p>
+         <span className="text-xs opacity-75">Please check internet connection.</span>
+       </div>
+    );
+    const NullComponent = () => null;
+    const ContainerFallback = ({children}) => <div className="w-full h-full p-4">{children}</div>;
+
+    const { 
+      LineChart = ChartFallback, 
+      BarChart = ChartFallback, 
+      AreaChart = ChartFallback,
+      Line = NullComponent, 
+      Bar = NullComponent, 
+      Area = NullComponent,
+      XAxis = NullComponent, 
+      YAxis = NullComponent, 
+      CartesianGrid = NullComponent, 
+      Tooltip = NullComponent, 
+      Legend = NullComponent, 
+      ResponsiveContainer = ContainerFallback
+    } = RechartsObj;
+
+    // --- Inline Icons ---
+    const IconWrapper = ({ children, className, ...props }) => (
+      <svg 
+        xmlns="http://www.w3.org/2000/svg" 
+        width="24" height="24" 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+        className={className}
+        {...props}
+      >
+        {children}
+      </svg>
+    );
+
+    const Icons = {
+      LayoutDashboard: (props) => <IconWrapper {...props}><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></IconWrapper>,
+      Users: (props) => <IconWrapper {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></IconWrapper>,
+      UserCog: (props) => <IconWrapper {...props}><circle cx="18" cy="15" r="3"/><circle cx="9" cy="7" r="4"/><path d="M10 15H6a4 4 0 0 0-4 4v2"/><mpath d="m21.7 16.4.9-.9"/><path d="m15.2 13.9-.9-.9"/><path d="m16.6 18.7.3-1.2"/><path d="m19.1 12.2.3-1.2"/><path d="m19.6 18.7.4-1"/><path d="m16.8 12.3-.4-1"/><path d="m14.3 16.6 1-.4"/><path d="m20.7 13.8 1-.4"/></IconWrapper>,
+      FileSpreadsheet: (props) => <IconWrapper {...props}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></IconWrapper>,
+      PlusCircle: (props) => <IconWrapper {...props}><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></IconWrapper>,
+      Download: (props) => <IconWrapper {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></IconWrapper>,
+      Mail: (props) => <IconWrapper {...props}><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></IconWrapper>,
+      FileText: (props) => <IconWrapper {...props}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></IconWrapper>,
+      RefreshCw: (props) => <IconWrapper {...props}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></IconWrapper>,
+      Save: (props) => <IconWrapper {...props}><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8V3"/></IconWrapper>,
+      Briefcase: (props) => <IconWrapper {...props}><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></IconWrapper>,
+      AlertCircle: (props) => <IconWrapper {...props}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></IconWrapper>,
+      Award: (props) => <IconWrapper {...props}><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></IconWrapper>,
+      Send: (props) => <IconWrapper {...props}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></IconWrapper>,
+      Copy: (props) => <IconWrapper {...props}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></IconWrapper>,
+      Calendar: (props) => <IconWrapper {...props}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></IconWrapper>,
+      MessageSquare: (props) => <IconWrapper {...props}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></IconWrapper>,
+      Clock: (props) => <IconWrapper {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconWrapper>,
+      TrendingUp: (props) => <IconWrapper {...props}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></IconWrapper>
+    };
+
+    const { LayoutDashboard, Users, UserCog, FileSpreadsheet, PlusCircle, Download, Mail, FileText, RefreshCw, Save, Briefcase, AlertCircle, Award, Send, Copy, Calendar, MessageSquare, Clock, TrendingUp } = Icons;
+
+    // --- Helper Functions ---
+
+    // Correctly format local date to YYYY-MM-DD
+    const getLocalISODate = () => {
+      const d = new Date();
+      const offset = d.getTimezoneOffset() * 60000;
+      const localISOTime = (new Date(d - offset)).toISOString().slice(0, 10);
+      return localISOTime;
+    };
+
+    const getRecordDate = (record) => {
+      if (record.date && record.date.includes('T')) return record.date.split('T')[0];
+      if (record.date) return record.date;
+      if (record.timestamp) return record.timestamp.split('T')[0];
+      return '';
+    };
+
+    const getAdjustedTarget = (target, status) => {
+      if (status === 'Half Day') return Math.floor(target / 2);
+      if (status === 'Assigned Work' || status === 'Leave') return 0; 
+      return target;
+    };
+
+    // --- New: Performance Logic (Fixed for Total Accounts) ---
+    const getPerformanceMetrics = (total, target) => {
+      if (target === 0) return { stars: 5, level: 'N/A', colorClass: 'text-gray-400', badgeColor: '#f3f4f6', textColor: '#374151', score: 'N/A' };
+      
+      const ratio = total / target;
+      // Calculate Score out of 5 (Target = 4.0, so 1.25x Target = 5.0)
+      let scoreRaw = (total / target) * 4; 
+      if (scoreRaw > 5) scoreRaw = 5;
+      const score = scoreRaw.toFixed(2);
+
+      let stars = 0;
+      let level = '';
+      let colorClass = ''; 
+      let badgeColor = '';
+      let textColor = '';
+
+      if (ratio >= 1.2) { 
+        stars = 5; level = 'Best Performance'; colorClass = 'text-green-600'; 
+        badgeColor = '#dcfce7'; textColor = '#166534';
+      } else if (ratio >= 1.0) { 
+        stars = 4; level = 'Best Performance'; colorClass = 'text-green-500'; 
+        badgeColor = '#f0fdf4'; textColor = '#15803d';
+      } else if (ratio >= 0.8) { 
+        stars = 3; level = 'Middle Performance'; colorClass = 'text-yellow-500'; 
+        badgeColor = '#fef9c3'; textColor = '#854d0e';
+      } else if (ratio >= 0.5) { 
+        stars = 2; level = 'Lower Performance'; colorClass = 'text-orange-500'; 
+        badgeColor = '#ffedd5'; textColor = '#9a3412';
+      } else { 
+        stars = 1; level = 'Lower Performance'; colorClass = 'text-red-600'; 
+        badgeColor = '#fee2e2'; textColor = '#991b1b';
+      }
+      return { stars, level, colorClass, badgeColor, textColor, score };
+    };
+
+    const renderStars = (count) => "★".repeat(count) + "☆".repeat(5 - count);
+
+
+    // --- Reusable UI Components ---
+
+    const Card = ({ title, value, subtext, color = "blue" }) => (
+      <div className={`bg-white p-6 rounded-lg shadow-sm border-l-4 border-${color}-500`}>
+        <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">{title}</h3>
+        <div className="mt-2 flex items-baseline">
+          <span className="text-3xl font-bold text-gray-900">{value}</span>
+        </div>
+        <p className="mt-1 text-sm text-gray-400">{subtext}</p>
+      </div>
+    );
+
+    const Button = ({ children, onClick, type='button', variant = 'primary', className = '', icon: Icon, disabled=false }) => {
+      const baseStyle = "flex items-center justify-center px-4 py-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
+      const variants = {
+        primary: "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500",
+        secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-blue-500",
+        danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500",
+        success: "bg-green-600 text-white hover:bg-green-700 focus:ring-green-500"
+      };
+      return (
+        <button onClick={onClick} disabled={disabled} type={type} className={`${baseStyle} ${variants[variant]} ${className}`}>
+          {Icon && <Icon className="w-4 h-4 mr-2" />}
+          {children}
+        </button>
+      );
+    };
+
+    const TableHeader = ({ children }) => (
+      <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider bg-blue-600 border-r border-blue-500 last:border-r-0">
+        {children}
+      </th>
+    );
+
+    const TableCell = ({ children, isNumeric = false, className = '' }) => (
+      <td className={`px-6 py-4 whitespace-nowrap text-sm text-gray-700 border-b border-gray-200 ${isNumeric ? 'text-right' : 'text-left'} ${className}`}>
+        {children}
+      </td>
+    );
+
+    const Input = ({ label, value, onChange, type="number" }) => (
+      <div>
+        <label className="block text-sm font-medium text-gray-700">{label}</label>
+        <input 
+          type={type} 
+          required 
+          className="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm focus:border-blue-500 focus:ring-blue-500" 
+          value={value} 
+          onChange={onChange} 
+        />
+      </div>
+    );
+
+    const NavItem = ({ id, icon: Icon, label, active, set }) => (
+      <li>
+        <button onClick={() => set(id)} className={`w-full flex items-center px-6 py-3 text-sm font-medium transition-colors ${active === id ? 'bg-blue-600 text-white border-r-4 border-blue-300' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+          <Icon className="w-5 h-5 mr-3" />
+          {label}
+        </button>
+      </li>
+    );
+
+    // --- Page Views ---
+
+    const DashboardView = ({ userEntries, systemEntries, setActiveTab, dailyTarget, setDailyTarget, selectedDate, setSelectedDate }) => {
+      const [viewRole, setViewRole] = useState('User');
+
+      const filteredUsers = userEntries.filter(u => getRecordDate(u) === selectedDate && u.role === viewRole);
+      const filteredSystem = systemEntries.filter(s => getRecordDate(s) === selectedDate);
+
+      const totalCompleted = filteredUsers.reduce((acc, curr) => acc + (Number(curr.completedAccounts) || 0), 0);
+      const totalRejects = filteredUsers.reduce((acc, curr) => acc + (Number(curr.rejectAccounts) || 0), 0);
+      const totalSystem = filteredSystem.reduce((acc, curr) => acc + (Number(curr.extractedACs) || 0), 0);
+
+      const chartData = filteredUsers
+        .sort((a,b) => Number(b.totalAccounts) - Number(a.totalAccounts)) // Sorted by Total
+        .slice(0, 10)
+        .map(u => ({
+          name: u.knownName || u.employeeName.split(' ')[0] || 'Unknown', 
+          completed: Number(u.completedAccounts) || 0,
+          rejected: Number(u.rejectAccounts) || 0
+        }));
+
+      return (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500">
+             <div className="flex flex-col">
+               <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wider">Dashboard Overview</h3>
+               <p className="text-xs text-gray-400">Production Date: {selectedDate}</p>
+             </div>
+             <div className="flex items-center gap-4">
+                <div className="flex bg-gray-100 p-1 rounded-md">
+                   <button onClick={() => setViewRole('User')} className={`px-3 py-1 text-sm rounded ${viewRole === 'User' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-500'}`}>Users</button>
+                   <button onClick={() => setViewRole('Supervisor')} className={`px-3 py-1 text-sm rounded ${viewRole === 'Supervisor' ? 'bg-white shadow text-purple-600 font-bold' : 'text-gray-500'}`}>Supervisors</button>
+                </div>
+                <div className="flex items-center border p-1 rounded-md bg-white">
+                  <Calendar className="w-4 h-4 text-gray-500 mr-2 ml-1"/>
+                  <input 
+                    type="date" 
+                    value={selectedDate} 
+                    onChange={(e) => setSelectedDate(e.target.value)} 
+                    className="outline-none text-sm text-gray-700"
+                  />
+                </div>
+             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <Card title={`${viewRole}s Completed`} value={totalCompleted} subtext={`Total Confirmed (${selectedDate})`} color={viewRole === 'User' ? 'green' : 'purple'} />
+            <Card title={`${viewRole}s Rejects`} value={totalRejects} subtext="Total Rejected" color="red" />
+            <Card title="System Volume" value={totalSystem} subtext="Extracted ACs" color="blue" />
+            
+            {viewRole === 'User' && (
+              <div className="bg-white p-6 rounded-lg shadow-sm border-l-4 border-yellow-500 flex flex-col justify-between">
+                 <div>
+                    <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">User Target</h3>
+                    <p className="mt-1 text-sm text-gray-400">Standard Target (Full Day)</p>
+                 </div>
+                 <div className="flex items-center mt-2">
+                   <input 
+                     type="number" 
+                     value={dailyTarget} 
+                     onChange={(e) => setDailyTarget(Number(e.target.value))} 
+                     className="text-3xl font-bold text-gray-900 w-24 border-b border-gray-200 focus:outline-none focus:border-blue-500 bg-transparent"
+                   />
+                   <span className="text-sm text-gray-400 ml-2">/day</span>
+                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-gray-800">Top {viewRole}s ({selectedDate})</h3>
+              <div className="text-sm text-gray-500">
+                {chartData.length === 0 ? "No data for this date." : "Sorted by Completed Accounts"}
+              </div>
+            </div>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="completed" fill="#3b82f6" name="Completed ACs" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="rejected" fill="#ef4444" name="Rejected ACs" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm">
+            <div className="p-4 border-b">
+              <h3 className="font-bold text-gray-700">Daily Production Log ({viewRole}s - {selectedDate})</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Known Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status / Notes</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Completed</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Rejects</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Accounts</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {/* Sorted Filtered Users */}
+                  {filteredUsers.sort((a,b) => Number(b.totalAccounts) - Number(a.totalAccounts)).map((u, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <TableCell>{u.employeeName} <span className="text-gray-400 text-xs">({u.userAD})</span></TableCell>
+                      <TableCell><span className="text-gray-600 font-medium">{u.knownName}</span></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className={`px-2 py-1 text-xs rounded-full w-fit ${
+                            u.workStatus === 'Half Day' ? 'bg-orange-100 text-orange-800' : 
+                            u.workStatus === 'Assigned Work' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {u.workStatus || 'Full Day'}
+                          </span>
+                          {u.notes && <span className="text-xs text-gray-500 mt-1 italic">{u.notes}</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell isNumeric>{u.completedAccounts}</TableCell>
+                      <TableCell isNumeric>{u.rejectAccounts}</TableCell>
+                      <TableCell isNumeric>{u.totalAccounts}</TableCell>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const ExtractedDataView = ({ data, onExport }) => (
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-4 border-b flex justify-between items-center">
+          <h3 className="font-bold text-gray-700">System Extract Logs</h3>
+          <Button onClick={onExport} variant="success" icon={FileSpreadsheet}>Export CSV</Button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-blue-600">
+              <tr>
+                {["Date", "Carried Fwd", "Extracted", "Auto Rej", "User Rej", "Completed AC", "Completed CIF", "New AC", "Amendments", "Reject Returns"].map(h => <TableHeader key={h}>{h}</TableHeader>)}
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {data.length === 0 && <tr><td colSpan="10" className="p-4 text-center text-gray-500">No records found.</td></tr>}
+              {data.map((row, i) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <TableCell>{getRecordDate(row)}</TableCell>
+                  <TableCell isNumeric>{row.carriedForward}</TableCell>
+                  <TableCell isNumeric>{row.extractedACs}</TableCell>
+                  <TableCell isNumeric>{row.autoRejects}</TableCell>
+                  <TableCell isNumeric>{row.userRejects}</TableCell>
+                  <TableCell isNumeric>{row.completedACs}</TableCell>
+                  <TableCell isNumeric>{row.completedCIFs}</TableCell>
+                  <TableCell isNumeric>{row.newExtractedACs}</TableCell>
+                  <TableCell isNumeric>{row.amendmentsExtractedACs}</TableCell>
+                  <TableCell isNumeric>{row.rejectReturnsExtractedACs}</TableCell>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+
+    const LevelView = ({ title, data, type, onExport, dailyTarget }) => {
+      const [filterDate, setFilterDate] = useState(getLocalISODate());
+      
+      // Filter AND Sort
+      const filteredData = data.filter(row => getRecordDate(row) === filterDate)
+                               .sort((a, b) => (Number(b.totalAccounts) || 0) - (Number(a.totalAccounts) || 0));
+      
+      const sums = useMemo(() => {
+        if (filteredData.length === 0) return null;
+        return {
+           reject: filteredData.reduce((acc, r) => acc + (Number(r.rejectAccounts)||0), 0),
+           completed: filteredData.reduce((acc, r) => acc + (Number(r.completedAccounts)||0), 0),
+           total: filteredData.reduce((acc, r) => acc + (Number(r.totalAccounts)||0), 0),
+           mods: filteredData.reduce((acc, r) => acc + (Number(r.modifications)||0) + (Number(r.uploadedAccounts)||0), 0)
+        };
+      }, [filteredData]);
+      
+      const avgTotal = useMemo(() => {
+        if (!sums || filteredData.length === 0) return 0;
+        return Math.round(sums.total / filteredData.length);
+      }, [sums, filteredData]);
+
+      return (
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-4 border-b flex justify-between items-center">
+            <div className="flex items-center gap-4">
+               <h3 className="font-bold text-gray-700">{title}</h3>
+               <div className="flex items-center bg-gray-100 rounded px-2 py-1">
+                 <span className="text-xs text-gray-500 mr-2">Filter Date:</span>
+                 <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="bg-transparent text-sm outline-none"/>
+               </div>
+            </div>
+            <Button onClick={onExport} variant="success" icon={FileSpreadsheet}>Export CSV</Button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-blue-600">
+                <tr>
+                  <TableHeader>Date</TableHeader>
+                  <TableHeader>User Name</TableHeader>
+                  <TableHeader>Known Name</TableHeader>
+                  <TableHeader>Status</TableHeader>
+                  <TableHeader>Reject</TableHeader>
+                  <TableHeader>{type === 'user' ? 'Completed' : 'Confirmed'}</TableHeader>
+                  <TableHeader>Total (Avg: {avgTotal})</TableHeader>
+                  <TableHeader>Rating</TableHeader> 
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredData.length === 0 && <tr><td colSpan="8" className="p-8 text-center text-gray-500">No records found for {filterDate}. Select another date.</td></tr>}
+                {filteredData.map((row, i) => {
+                   const status = row.workStatus || 'Full Day';
+                   const userTarget = getAdjustedTarget(dailyTarget, status);
+                   const total = Number(row.totalAccounts) || 0;
+                   const diffFromAvg = total - avgTotal;
+                   
+                   const { stars, level, colorClass, badgeColor, textColor, score } = getPerformanceMetrics(total, userTarget);
+                   
+                   return (
+                    <tr key={i} className={`hover:bg-gray-50`}>
+                      <TableCell>{getRecordDate(row)}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{row.employeeName}</div>
+                        <div className="text-xs text-gray-400">{row.userAD}</div>
+                      </TableCell>
+                      <TableCell><span className="text-sm text-gray-600">{row.knownName}</span></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className={`text-xs px-2 py-0.5 rounded-full w-fit mb-1 ${status === 'Half Day' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-600'}`}>
+                            {status}
+                          </span>
+                          {row.notes && (
+                            <div className="flex items-start text-xs text-gray-500 max-w-xs">
+                              <MessageSquare className="w-3 h-3 mr-1 mt-0.5 flex-shrink-0" />
+                              <span className="italic">{row.notes}</span>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell isNumeric>{row.rejectAccounts}</TableCell>
+                      <TableCell isNumeric>{row.completedAccounts}</TableCell>
+                      
+                      {/* Performance Indicator on Total Accounts */}
+                      <TableCell isNumeric>
+                        <div className="flex flex-col items-end">
+                          <div className="flex items-center">
+                            <span className="font-bold text-gray-800 mr-2">
+                              {row.totalAccounts}
+                            </span>
+                          </div>
+                          {/* Performance vs Average */}
+                          {type === 'user' && (
+                            <span className={`text-xs ${diffFromAvg >= 0 ? 'text-green-600' : 'text-red-400'}`}>
+                              {diffFromAvg >= 0 ? '+' : ''}{diffFromAvg} vs Avg
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      
+                      <TableCell>
+                        {type === 'user' && (
+                            <div className="flex flex-col items-center">
+                                <span className="text-xs font-bold text-gray-500 mb-1">{score}/5</span>
+                                <span className="text-yellow-400 text-lg leading-none" title={`${stars} Stars`}>{renderStars(stars)}</span>
+                                <span className={`text-xs font-semibold ${colorClass} mt-1`}>{level}</span>
+                            </div>
+                        )}
+                      </TableCell>
+                    </tr>
+                   );
+                })}
+              </tbody>
+              {/* Total Row */}
+              {sums && (
+                <tfoot className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                  <tr>
+                    <td colSpan="4" className="px-6 py-3 text-right text-gray-600 uppercase tracking-wider">Total for {filterDate}:</td>
+                    <TableCell isNumeric>{sums.reject}</TableCell>
+                    <TableCell isNumeric>{sums.completed}</TableCell>
+                    <TableCell isNumeric>{sums.total}</TableCell>
+                    <TableCell>{/* Rating spacer */}</TableCell> 
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      );
+    };
+    
+    const UserHistoryView = ({ users }) => {
+      const [selectedUserAD, setSelectedUserAD] = useState('');
+      
+      const uniqueUsers = useMemo(() => {
+        const map = new Map();
+        users.forEach(u => {
+          if (u.role === 'User' && !map.has(u.userAD)) {
+            map.set(u.userAD, u);
+          }
+        });
+        return Array.from(map.values());
+      }, [users]);
+
+      const userStats = useMemo(() => {
+        if (!selectedUserAD) return null;
+        
+        const history = users
+          .filter(u => u.userAD === selectedUserAD)
+          .sort((a,b) => new Date(getRecordDate(a)) - new Date(getRecordDate(b)));
+
+        if (history.length === 0) return null;
+
+        const totalCompleted = history.reduce((sum, r) => sum + (Number(r.completedAccounts) || 0), 0);
+        const totalProcessed = history.reduce((sum, r) => sum + (Number(r.totalAccounts) || 0), 0);
+        const daysWorked = history.length;
+        // Correct calculation: Avg based on Total Processed
+        const averageDaily = Math.round(totalProcessed / daysWorked);
+        
+        // Correct calculation: Best Day based on Total Processed
+        const bestDay = history.reduce((best, current) => {
+           return (Number(current.totalAccounts) > Number(best.totalAccounts)) ? current : best;
+        }, history[0]);
+
+        return { history, totalCompleted, totalProcessed, averageDaily, bestDay, daysWorked };
+      }, [selectedUserAD, users]);
+
+      return (
+        <div className="space-y-6">
+           <div className="bg-white p-6 rounded-lg shadow-sm">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Employee to View History</label>
+              <select 
+                className="w-full p-2 border rounded-md shadow-sm"
+                value={selectedUserAD}
+                onChange={(e) => setSelectedUserAD(e.target.value)}
+              >
+                <option value="">-- Choose an Employee --</option>
+                {uniqueUsers.map(u => (
+                  <option key={u.userAD} value={u.userAD}>{u.employeeName} ({u.userAD})</option>
+                ))}
+              </select>
+           </div>
+
+           {userStats ? (
+             <>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <Card title="All-Time Total" value={userStats.totalProcessed} subtext={`Over ${userStats.daysWorked} working days`} color="blue" />
+                  <Card title="Average Daily" value={userStats.averageDaily} subtext="Total Accounts / Day" color="purple" />
+                  <Card title="Best Performance" value={userStats.bestDay.totalAccounts} subtext={`On ${getRecordDate(userStats.bestDay)}`} color="green" />
+               </div>
+
+               <div className="bg-white p-6 rounded-lg shadow-sm h-80">
+                  <h3 className="font-bold text-gray-700 mb-4">Performance Trend (Total Accounts)</h3>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={userStats.history}>
+                      <defs>
+                        <linearGradient id="colorPerf" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="date" tickFormatter={(val) => val ? val.substring(5) : ''} />
+                      <YAxis />
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <Tooltip labelFormatter={(val) => getRecordDate({date: val})}/>
+                      <Area type="monotone" dataKey="totalAccounts" stroke="#3b82f6" fill="url(#colorPerf)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+               </div>
+
+               <div className="bg-white rounded-lg shadow overflow-hidden">
+                 <div className="p-4 border-b"><h3 className="font-bold text-gray-700">Work Log History</h3></div>
+                 <div className="overflow-x-auto">
+                   <table className="min-w-full divide-y divide-gray-200">
+                     <thead className="bg-gray-50">
+                       <tr>
+                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Completed</th>
+                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-gray-200">
+                       {userStats.history.map((row, i) => (
+                         <tr key={i}>
+                           <TableCell>{getRecordDate(row)}</TableCell>
+                           <TableCell>{row.workStatus}</TableCell>
+                           <TableCell isNumeric>{row.completedAccounts}</TableCell>
+                           <TableCell isNumeric>{row.totalAccounts}</TableCell>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
+                 </div>
+               </div>
+             </>
+           ) : (
+             <div className="text-center py-12 text-gray-500">Select a user above to see their performance history.</div>
+           )}
+        </div>
+      );
+    };
+
+    const StaffDirectoryView = ({ users }) => {
+      const uniqueStaff = useMemo(() => {
+        const map = new Map();
+        users.forEach(u => {
+          if (!map.has(u.userAD)) {
+            map.set(u.userAD, { 
+              userAD: u.userAD, 
+              employeeName: u.employeeName, 
+              knownName: u.knownName,
+              role: u.role 
+            });
+          }
+        });
+        return Array.from(map.values());
+      }, [users]);
+
+      return (
+        <div className="bg-white rounded-lg shadow">
+           <div className="p-4 border-b flex justify-between items-center">
+             <h3 className="font-bold text-gray-700">Staff Directory</h3>
+             <span className="text-sm text-gray-500">{uniqueStaff.length} Employees Found</span>
+           </div>
+           <div className="overflow-x-auto">
+             <table className="min-w-full divide-y divide-gray-200">
+               <thead className="bg-gray-50">
+                 <tr>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User AD</th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee Name</th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Known Name</th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                 </tr>
+               </thead>
+               <tbody className="bg-white divide-y divide-gray-200">
+                 {uniqueStaff.map((s, i) => (
+                   <tr key={i}>
+                     <TableCell>{s.userAD}</TableCell>
+                     <TableCell>{s.employeeName}</TableCell>
+                     <TableCell>{s.knownName || '-'}</TableCell>
+                     <TableCell>
+                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${s.role === 'Supervisor' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>
+                         {s.role}
+                       </span>
+                     </TableCell>
+                     <TableCell><span className="text-gray-400 text-xs">Active</span></TableCell>
+                   </tr>
+                 ))}
+               </tbody>
+             </table>
+           </div>
+        </div>
+      );
+    };
+
+    const DataEntryView = ({ onRefresh }) => {
+      const [type, setType] = useState('user');
+      const [msg, setMsg] = useState('');
+      const [saving, setSaving] = useState(false);
+      
+      // Initialize form date with local ISO date to prevent timezone issues
+      const [userForm, setUserForm] = useState({ 
+        role: 'User', userAD: '', employeeName: '', knownName: '', date: getLocalISODate(),
+        workStatus: 'Full Day', notes: '',
+        rejectAccounts: 0, completedAccounts: 0, completedCIFCount: 0, 
+        totalAccounts: 0, modifications: 0, uploadedAccounts: 0 
+      });
+      
+      const [sysForm, setSysForm] = useState({ 
+        date: getLocalISODate(), 
+        carriedForward: 0, extractedACs: 0, autoRejects: 0, 
+        userRejects: 0, completedACs: 0, completedCIFs: 0, 
+        newExtractedACs: 0, amendmentsExtractedACs: 0,
+        rejectReturnsExtractedACs: 0
+      });
+
+      const sanitizePayload = (data) => JSON.parse(JSON.stringify(data));
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        setSaving(true);
+        setMsg('');
+        
+        const payload = sanitizePayload(type === 'user' ? userForm : sysForm);
+
+        if (typeof google === 'undefined' || !google.script) {
+           setSaving(false);
+           setMsg("Mock Save: Google Script Environment missing.");
+           return;
+        }
+        
+        google.script.run.withSuccessHandler((res) => {
+          setSaving(false);
+          if (res.status === 'success') {
+            setMsg('Success: Record saved!');
+            onRefresh(); 
+            if(type === 'user') setUserForm(prev => ({...prev, rejectAccounts:0, completedAccounts:0, completedCIFCount:0, totalAccounts:0, notes: ''}));
+          } else {
+            setMsg('Error: ' + res.message);
+          }
+        }).withFailureHandler((err) => {
+          setSaving(false);
+          setMsg('Critical Error: ' + err.message);
+        }).addRecord(type, payload);
+      };
+
+      // Generic handler for form updates
+      const handleUserChange = (field, val) => {
+        setUserForm(prev => ({ ...prev, [field]: val }));
+      };
+      const handleSysChange = (field, val) => {
+        setSysForm(prev => ({ ...prev, [field]: val }));
+      };
+
+      return (
+        <div className="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-sm">
+          <h3 className="text-xl font-bold text-gray-800 mb-6">Add New Data</h3>
+          
+          <div className="flex space-x-4 mb-6">
+            <button onClick={() => setType('user')} className={`flex-1 py-3 rounded-lg font-medium transition-colors ${type === 'user' ? 'bg-blue-600 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Staff / Supervisor Entry</button>
+            <button onClick={() => setType('system')} className={`flex-1 py-3 rounded-lg font-medium transition-colors ${type === 'system' ? 'bg-blue-600 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Daily System Log</button>
+          </div>
+          
+          {msg && <div className={`mb-4 p-3 rounded ${msg.includes('Error') ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{msg}</div>}
+          
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {type === 'user' ? (
+              <>
+                 <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                   <div>
+                     <label className="block text-sm font-medium text-gray-700">Role</label>
+                     <select className="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm" value={userForm.role} onChange={e => handleUserChange('role', e.target.value)}>
+                       <option>User</option><option>Supervisor</option>
+                     </select>
+                   </div>
+                   {/* DATE INPUT */}
+                   <Input type="date" label="Date (Record Date)" value={userForm.date} onChange={e => handleUserChange('date', e.target.value)} />
+                 </div>
+                 
+                 <Input type="text" label="User AD" value={userForm.userAD} onChange={e => handleUserChange('userAD', e.target.value)} />
+                 <Input type="text" label="Employee Name" value={userForm.employeeName} onChange={e => handleUserChange('employeeName', e.target.value)} />
+                 
+                 {/* NEW: Known Name Field */}
+                 <div className="md:col-span-2">
+                   <Input type="text" label="Known Name (Optional)" value={userForm.knownName} onChange={e => handleUserChange('knownName', e.target.value)} />
+                 </div>
+                 
+                 <div className="md:col-span-2 bg-gray-50 p-4 rounded-md border border-gray-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Work Status</label>
+                        <select className="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm" value={userForm.workStatus} onChange={e => handleUserChange('workStatus', e.target.value)}>
+                          <option value="Full Day">Full Day</option>
+                          <option value="Half Day">Half Day</option>
+                          <option value="Assigned Work">Assigned Other Work</option>
+                          <option value="Leave">On Leave</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Notes / Remarks</label>
+                        <textarea 
+                          className="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm h-10 resize-none text-sm" 
+                          placeholder="Reason for low count..."
+                          value={userForm.notes} 
+                          onChange={e => handleUserChange('notes', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                 </div>
+
+                 <div className="md:col-span-2 border-t pt-4 font-bold text-gray-500 text-sm uppercase">Workload Metrics</div>
+                 
+                 <Input label="Reject Accounts" value={userForm.rejectAccounts} onChange={e => handleUserChange('rejectAccounts', Number(e.target.value))} />
+                 <Input label={userForm.role === 'User' ? "Completed Accounts" : "Confirmed Accounts"} value={userForm.completedAccounts} onChange={e => handleUserChange('completedAccounts', Number(e.target.value))} />
+                 <Input label="Total Accounts" value={userForm.totalAccounts} onChange={e => handleUserChange('totalAccounts', Number(e.target.value))} />
+                 <Input label={userForm.role === 'User' ? "Completed CIF" : "Confirmed CIF"} value={userForm.completedCIFCount} onChange={e => handleUserChange('completedCIFCount', Number(e.target.value))} />
+                 <Input label={userForm.role === 'User' ? "Modifications" : "Uploaded Accounts"} 
+                        value={userForm.role === 'User' ? userForm.modifications : userForm.uploadedAccounts} 
+                        onChange={e => handleUserChange(userForm.role === 'User' ? 'modifications' : 'uploadedAccounts', Number(e.target.value))} 
+                 />
+              </>
+            ) : (
+              <>
+                <div className="md:col-span-2"><Input type="date" label="Date" value={sysForm.date} onChange={e => handleSysChange('date', e.target.value)} /></div>
+                <Input label="Extracted ACs" value={sysForm.extractedACs} onChange={e => handleSysChange('extractedACs', Number(e.target.value))} />
+                <Input label="Auto Rejects" value={sysForm.autoRejects} onChange={e => handleSysChange('autoRejects', Number(e.target.value))} />
+                <Input label="User Rejects" value={sysForm.userRejects} onChange={e => handleSysChange('userRejects', Number(e.target.value))} />
+                <Input label="Completed ACs" value={sysForm.completedACs} onChange={e => handleSysChange('completedACs', Number(e.target.value))} />
+                <Input label="Completed CIFs" value={sysForm.completedCIFs} onChange={e => handleSysChange('completedCIFs', Number(e.target.value))} />
+                <Input label="New Extracted ACs" value={sysForm.newExtractedACs} onChange={e => handleSysChange('newExtractedACs', Number(e.target.value))} />
+                <Input label="Amendments Extracted" value={sysForm.amendmentsExtractedACs} onChange={e => handleSysChange('amendmentsExtractedACs', Number(e.target.value))} />
+                <Input label="Reject Returns Extracted" value={sysForm.rejectReturnsExtractedACs} onChange={e => handleSysChange('rejectReturnsExtractedACs', Number(e.target.value))} />
+              </>
+            )}
+            <div className="md:col-span-2 pt-4">
+              <Button type="submit" className="w-full" icon={Save} disabled={saving}>{saving ? 'Saving...' : 'Save Record to Sheet'}</Button>
+            </div>
+          </form>
+        </div>
+      );
+    };
+
+    const ReportsView = ({ userEntries, averages, systemEntries }) => (
+      <div className="space-y-8">
+        <div className="bg-white p-6 rounded-lg shadow-sm h-96">
+          <h3 className="text-lg font-bold mb-4 text-gray-800">Historical System Volume (Extraction)</h3>
+          <ResponsiveContainer width="100%" height="90%">
+            <AreaChart data={systemEntries}>
+              <defs>
+                <linearGradient id="colorAc" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="date" tickFormatter={d => new Date(d).toLocaleDateString()} />
+              <YAxis />
+              <CartesianGrid strokeDasharray="3 3" />
+              <Tooltip labelFormatter={d => new Date(d).toLocaleDateString()} />
+              <Area type="monotone" dataKey="extractedACs" stroke="#3b82f6" fill="url(#colorAc)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    );
+
+    const EmailGeneratorView = ({ users, systemEntries, averages, dailyTarget }) => {
+      const [emailBody, setEmailBody] = useState('');
+      const [selectedDate, setSelectedDate] = useState(getLocalISODate());
+      const [toField, setToField] = useState('');
+      const [ccField, setCcField] = useState('');
+      const [sending, setSending] = useState(false);
+
+      const generateHtmlEmail = () => {
+        const dateUsers = users.filter(u => getRecordDate(u) === selectedDate);
+        const dateSystem = systemEntries.find(s => getRecordDate(s) === selectedDate) || {};
+        const supervisors = dateUsers.filter(u => u.role === 'Supervisor');
+        const normalUsers = dateUsers.filter(u => u.role === 'User')
+                                     .sort((a, b) => Number(b.totalAccounts) - Number(a.totalAccounts));
+
+        const avgTotal = normalUsers.length > 0 ? Math.round(normalUsers.reduce((sum, u) => sum + (Number(u.totalAccounts) || 0), 0) / normalUsers.length) : 0;
+
+        // Calculate Totals for Summary Row
+        const totalCompleted = normalUsers.reduce((sum, u) => sum + (Number(u.completedAccounts) || 0), 0);
+        const totalRejects = normalUsers.reduce((sum, u) => sum + (Number(u.rejectAccounts) || 0), 0);
+        const totalTotal = normalUsers.reduce((sum, u) => sum + (Number(u.totalAccounts) || 0), 0);
+
+        const styleTable = "width: 100%; border-collapse: collapse; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 13px; color: #333;";
+        const styleTh = "background-color: #f8f9fa; color: #4b5563; padding: 12px 15px; text-align: left; border-bottom: 2px solid #e5e7eb; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em;";
+        const styleTd = "padding: 12px 15px; border-bottom: 1px solid #e5e7eb; vertical-align: middle;";
+        const styleHeader = "background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;";
+        const styleSection = "margin-top: 30px; margin-bottom: 15px; font-weight: 700; color: #1f2937; border-left: 4px solid #3b82f6; padding-left: 10px; font-size: 16px; letter-spacing: -0.02em;";
+        
+        // New Badge Styles
+        const badgeBase = "display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 12px; line-height: 1;";
+        const badgeGreen = "background-color: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;";
+        const badgeRed = "background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;";
+        const badgeBlue = "background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;";
+        const diffTextBase = "display: block; font-size: 10px; margin-top: 4px; font-weight: normal;";
+        
+        const iconAward = `<span style="margin-right:4px; font-size:14px;">🏆</span>`;
+        const iconAlert = `<span style="margin-right:4px; font-size:14px;">⚠️</span>`;
+
+        let html = `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 900px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden;">
+            <div style="${styleHeader}">
+              <h1 style="margin:0; font-size: 24px; font-weight: 700;">Daily Workload Report</h1>
+              <p style="margin:8px 0 0 0; opacity: 0.9; font-size: 14px;">Production Date: <strong>${selectedDate}</strong></p>
+            </div>
+            
+            <div style="padding: 30px; background-color: #ffffff;">
+              
+              <h3 style="${styleSection}">System Extraction Overview</h3>
+              <table style="${styleTable}">
+                <thead>
+                  <tr>
+                    <th style="${styleTh}">Extracted ACs</th>
+                    <th style="${styleTh}">Auto Rejects</th>
+                    <th style="${styleTh}">User Rejects</th>
+                    <th style="${styleTh}">Completed (Sys)</th>
+                    <th style="${styleTh}">Reject Returns</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="${styleTd}; font-weight: bold; color: #2563eb;">${dateSystem.extractedACs || 0}</td>
+                    <td style="${styleTd}">${dateSystem.autoRejects || 0}</td>
+                    <td style="${styleTd}">${dateSystem.userRejects || 0}</td>
+                    <td style="${styleTd}; font-weight: bold; color: #059669;">${dateSystem.completedACs || 0}</td>
+                    <td style="${styleTd}">${dateSystem.rejectReturnsExtractedACs || 0}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <h3 style="${styleSection}">Supervisor Activity</h3>
+              ${supervisors.length === 0 ? '<p style="color:#6b7280; font-style:italic; padding-left: 15px;">No supervisor records found for this date.</p>' : `
+              <table style="${styleTable}">
+                <thead>
+                  <tr>
+                    <th style="${styleTh}">Supervisor Name</th>
+                    <th style="${styleTh}">Confirmed Accounts</th>
+                    <th style="${styleTh}">Rejects</th>
+                    <th style="${styleTh}">Total Processed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${supervisors.map(s => `
+                    <tr>
+                      <td style="${styleTd}; font-weight: 500;">${s.knownName || s.employeeName}</td>
+                      <td style="${styleTd}">${s.completedAccounts}</td>
+                      <td style="${styleTd}">${s.rejectAccounts}</td>
+                      <td style="${styleTd}; font-weight: bold;">${s.totalAccounts}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>`}
+
+              <h3 style="${styleSection}">User Performance <span style="font-weight: 400; font-size: 13px; color: #6b7280; margin-left: 10px;">(Avg: ${avgTotal} | Target: ${dailyTarget})</span></h3>
+              ${normalUsers.length === 0 ? '<p style="color:#6b7280; font-style:italic; padding-left: 15px;">No user records found for this date.</p>' : `
+              <table style="${styleTable}">
+                <thead>
+                  <tr>
+                    <th style="${styleTh}">Employee Name</th>
+                    <th style="${styleTh}">Status</th>
+                    <th style="${styleTh}">Completed</th>
+                    <th style="${styleTh}">Rejects</th>
+                    <th style="${styleTh}">Total</th>
+                    <th style="${styleTh}">Rating</th> 
+                    <th style="${styleTh}">Notes / Remarks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${normalUsers.map(u => {
+                    const status = u.workStatus || 'Full Day';
+                    const target = getAdjustedTarget(dailyTarget, status);
+                    const total = Number(u.totalAccounts);
+                    const diff = total - avgTotal;
+                    const diffStr = diff >= 0 ? `+${diff}` : `${diff}`;
+                    const diffColor = diff >= 0 ? '#047857' : '#b91c1c';
+                    
+                    const { stars, level, colorClass, badgeColor, textColor, score } = getPerformanceMetrics(total, target);
+                    
+                    let rowStyle = "";
+                    
+                    // Logic for row highlighting
+                    if (target > 0 && total < target) rowStyle = "background-color: #fef2f2;"; // Light Red row
+                    else if (target > 0 && total >= target * 1.2) rowStyle = "background-color: #f0fdf4;"; // Light Green row
+
+                    return `
+                    <tr style="${rowStyle}">
+                      <td style="${styleTd}; font-weight: 500;">${u.knownName || u.employeeName}</td>
+                      <td style="${styleTd}"><span style="font-size:11px; background:#e5e7eb; padding:2px 6px; border-radius:4px; color:#4b5563;">${status}</span></td>
+                      <td style="${styleTd}">${u.completedAccounts}</td>
+                      <td style="${styleTd}">${u.rejectAccounts}</td>
+                      <td style="${styleTd}; font-weight: bold;">${u.totalAccounts}</td>
+                      <td style="${styleTd}">
+                        <div style="${badgeBase} background-color: ${badgeColor}; color: ${textColor}; border: 1px solid ${badgeColor};">
+                           ${stars >= 4 ? iconAward : (stars <= 2 ? iconAlert : '')} ${score}/5
+                        </div>
+                        <div style="margin-top: 4px; font-size: 12px; color: #f59e0b;">
+                           ${renderStars(stars)}
+                        </div>
+                        <div style="font-size: 9px; font-weight: bold; text-transform: uppercase; color: ${textColor}; margin-top: 2px;">
+                           ${level}
+                        </div>
+                      </td>
+                      <td style="${styleTd}; font-style:italic; color:#6b7280; max-width: 200px;">${u.notes || ''}</td>
+                    </tr>
+                  `}).join('')}
+                  
+                  <!-- SUMMARY ROW -->
+                  <tr style="background-color: #e5e7eb; font-weight: bold; border-top: 2px solid #9ca3af;">
+                    <td colspan="2" style="${styleTd} text-align: right; text-transform: uppercase;">TOTAL:</td>
+                    <td style="${styleTd}">${totalCompleted}</td>
+                    <td style="${styleTd}">${totalRejects}</td>
+                    <td style="${styleTd}">${totalTotal}</td>
+                    <td style="${styleTd}"></td>
+                    <td style="${styleTd}"></td>
+                  </tr>
+
+                </tbody>
+              </table>`}
+              
+              <div style="margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px; text-align: center;">
+                <p style="font-size: 12px; color: #9ca3af;">Generated automatically by the Workload Dashboard System.</p>
+              </div>
+            </div>
+          </div>
+        `;
+        setEmailBody(html);
+      };
+
+      const sendViaGmail = () => {
+        if(!toField) return alert("Please enter a 'To' email address.");
+        if (typeof google === 'undefined' || !google.script) return alert("Mock Send: Backend not connected.");
+        
+        setSending(true);
+        google.script.run.withSuccessHandler(() => {
+           setSending(false);
+           alert("Email sent successfully via Gmail!");
+        }).withFailureHandler((err) => {
+           setSending(false);
+           alert("Failed to send: " + err.message);
+        }).sendEmail({
+           to: toField,
+           cc: ccField,
+           subject: `Daily Workload Report - ${selectedDate}`,
+           htmlBody: emailBody
+        });
+      };
+
+      return (
+        <div className="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-sm">
+          <h3 className="text-xl font-bold mb-6 text-gray-800">HTML Report Generator</h3>
+          
+          <div className="mb-4 flex gap-4">
+             <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700">To:</label>
+                <input type="text" className="w-full border p-2 rounded" value={toField} onChange={e => setToField(e.target.value)} placeholder="manager@example.com" />
+             </div>
+             <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700">CC:</label>
+                <input type="text" className="w-full border p-2 rounded" value={ccField} onChange={e => setCcField(e.target.value)} />
+             </div>
+          </div>
+
+          <div className="animate-fade-in">
+            <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select Date for Report</label>
+                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="p-2 border rounded shadow-sm" />
+            </div>
+            <Button onClick={generateHtmlEmail} className="w-full mb-6" icon={RefreshCw}>Generate HTML Report</Button>
+            
+            {emailBody && (
+              <div className="border-t pt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Rich Preview</label>
+                <div className="w-full h-96 p-4 border rounded bg-white overflow-y-auto mb-4 border-gray-300 shadow-inner" dangerouslySetInnerHTML={{ __html: emailBody }}></div>
+                <div className="flex space-x-3">
+                    <Button onClick={sendViaGmail} variant="primary" icon={Send} disabled={sending}>{sending ? 'Sending...' : 'Send via Gmail'}</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // --- Main App ---
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [loading, setLoading] = useState(true);
+      const [refreshing, setRefreshing] = useState(false);
+      const [userEntries, setUserEntries] = useState([]);
+      const [systemEntries, setSystemEntries] = useState([]);
+      const [dailyTarget, setDailyTarget] = useState(100); 
+      const [selectedDate, setSelectedDate] = useState(getLocalISODate());
+
+      useEffect(() => {
+        fetchData();
+      }, []);
+
+      const fetchData = () => {
+        setRefreshing(true);
+        if (typeof google === 'undefined' || !google.script) {
+           console.warn("Google Script environment not found. Using mock data.");
+           setTimeout(() => {
+             const today = getLocalISODate();
+             setUserEntries([
+               { userAD: "LK001", employeeName: "John Doe", knownName: "Johnny", role: "User", rejectAccounts: 5, completedAccounts: 80, completedCIFCount: 130, totalAccounts: 150, modifications: 0, date: today, workStatus: "Full Day" },
+               { userAD: "LK002", employeeName: "Jane Smith", knownName: "Jane", role: "User", rejectAccounts: 2, completedAccounts: 140, completedCIFCount: 150, totalAccounts: 160, modifications: 0, date: today, workStatus: "Half Day" },
+               { userAD: "LK003", employeeName: "Mike Boss", knownName: "Mike", role: "Supervisor", rejectAccounts: 10, completedAccounts: 5, completedCIFCount: 5, totalAccounts: 15, modifications: 0, date: today }
+             ]);
+             setSystemEntries([
+               { date: today, extractedACs: 5000, completedACs: 4800, autoRejects: 200 }
+             ]);
+             setLoading(false);
+             setRefreshing(false);
+           }, 1000);
+           return;
+        }
+
+        google.script.run.withSuccessHandler((userData) => {
+          setUserEntries(userData || []);
+          google.script.run.withSuccessHandler((sysData) => {
+            setSystemEntries(sysData || []);
+            setLoading(false);
+            setRefreshing(false);
+          }).getRecords('system');
+        }).getRecords('user');
+      };
+
+      const calculateAverages = () => {
+        const users = userEntries.filter(e => e.role === 'User');
+        if (users.length === 0) return { avgCompleted: 0, avgReject: 0 };
+        const totalCompleted = users.reduce((acc, curr) => acc + (Number(curr.completedAccounts) || 0), 0);
+        const totalReject = users.reduce((acc, curr) => acc + (Number(curr.rejectAccounts) || 0), 0);
+        return {
+          avgCompleted: (totalCompleted / users.length).toFixed(1),
+          avgReject: (totalReject / users.length).toFixed(1)
+        };
+      };
+
+      const exportToCSV = (data, filename) => {
+        if (!data || data.length === 0) return alert("No data to export");
+        const headers = Object.keys(data[0]).join(',');
+        const rows = data.map(obj => Object.values(obj).join(','));
+        const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `${filename}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
+      if (loading) {
+        return (
+          <div className="flex h-screen items-center justify-center bg-gray-50 flex-col">
+            <div className="loader mb-4"></div>
+            <p className="text-gray-500 font-medium">Loading Dashboard Data...</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex h-screen bg-gray-100 font-sans overflow-hidden">
+          <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20 overflow-y-auto">
+            <div className="p-6 border-b border-slate-700">
+              <h1 className="text-xl font-bold tracking-tight">Workload<span className="text-blue-400">Monitor</span></h1>
+              <p className="text-xs text-slate-400 mt-1">Google App Dashboard</p>
+            </div>
+            
+            <nav className="flex-1 py-4">
+              <ul className="space-y-1">
+                <NavItem id="dashboard" icon={LayoutDashboard} label="Dashboard" active={activeTab} set={setActiveTab} />
+                <div className="pt-4 pb-1 pl-4 text-xs font-semibold text-slate-500 uppercase">Monitoring</div>
+                <NavItem id="extracted" icon={FileSpreadsheet} label="Extracted Data" active={activeTab} set={setActiveTab} />
+                <NavItem id="supervisor" icon={UserCog} label="Supervisor Level" active={activeTab} set={setActiveTab} />
+                <NavItem id="users" icon={Users} label="User Level" active={activeTab} set={setActiveTab} />
+                <div className="pt-4 pb-1 pl-4 text-xs font-semibold text-slate-500 uppercase">Management</div>
+                <NavItem id="history" icon={Clock} label="User History" active={activeTab} set={setActiveTab} />
+                <NavItem id="staff" icon={Briefcase} label="Staff Directory" active={activeTab} set={setActiveTab} />
+                
+                <div className="pt-4 pb-1 pl-4 text-xs font-semibold text-slate-500 uppercase">Actions</div>
+                <NavItem id="entry" icon={PlusCircle} label="Data Entry" active={activeTab} set={setActiveTab} />
+                <NavItem id="reports" icon={FileText} label="Reports & Analysis" active={activeTab} set={setActiveTab} />
+                <NavItem id="email" icon={Mail} label="Email Generator" active={activeTab} set={setActiveTab} />
+              </ul>
+            </nav>
+            <div className="p-4 border-t border-slate-700 text-center text-xs text-gray-500">v1.2.7 | Serverless</div>
+          </aside>
+
+          <main className="flex-1 overflow-y-auto bg-gray-50">
+            <header className="bg-white shadow-sm border-b sticky top-0 z-10 px-8 py-4 flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-gray-800 capitalize">
+                {activeTab.replace(/([A-Z])/g, ' $1').trim()}
+              </h2>
+              <div className="flex items-center space-x-4">
+                <Button onClick={fetchData} variant="secondary" icon={RefreshCw} disabled={refreshing}>
+                  {refreshing ? 'Syncing...' : 'Refresh Data'}
+                </Button>
+                <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                  {new Date().toLocaleDateString()}
+                </span>
+              </div>
+            </header>
+
+            <div className="p-8">
+              {activeTab === 'dashboard' && <DashboardView userEntries={userEntries} systemEntries={systemEntries} setActiveTab={setActiveTab} dailyTarget={dailyTarget} setDailyTarget={setDailyTarget} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
+              {activeTab === 'extracted' && <ExtractedDataView data={systemEntries} onExport={() => exportToCSV(systemEntries, 'extracted_data')} />}
+              {activeTab === 'supervisor' && <LevelView title="Supervisor Level" data={userEntries.filter(u => u.role === 'Supervisor')} type="supervisor" onExport={() => exportToCSV(userEntries.filter(u => u.role === 'Supervisor'), 'supervisor_data')} dailyTarget={dailyTarget} />}
+              {activeTab === 'users' && <LevelView title="User Level" data={userEntries.filter(u => u.role === 'User')} type="user" onExport={() => exportToCSV(userEntries.filter(u => u.role === 'User'), 'user_data')} dailyTarget={dailyTarget} />}
+              {activeTab === 'history' && <UserHistoryView users={userEntries} />}
+              {activeTab === 'staff' && <StaffDirectoryView users={userEntries} />}
+              {activeTab === 'entry' && <DataEntryView onRefresh={fetchData} />}
+              {activeTab === 'reports' && <ReportsView userEntries={userEntries} averages={calculateAverages()} systemEntries={systemEntries} />}
+              {activeTab === 'email' && <EmailGeneratorView users={userEntries} systemEntries={systemEntries} averages={calculateAverages()} dailyTarget={dailyTarget} />}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
